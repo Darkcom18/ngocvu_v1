@@ -188,17 +188,45 @@ def display_time_tracking():
     selected_month = st.selectbox("Chọn tháng", list(range(1, 13)), format_func=lambda x: calendar.month_name[x])
     selected_year = st.selectbox("Chọn năm", list(range(2024, now.year + 1)))  # Điều chỉnh năm bắt đầu từ 2024
 
+    # Hiển thị bảng chấm công của tháng được chọn
+    st.header(f"Bảng chấm công tháng {calendar.month_name[selected_month]} năm {selected_year}")
+
     # Tạo bảng với ngày trong tháng
     start_date = datetime(selected_year, selected_month, 1)
     end_date = (start_date + timedelta(days=calendar.monthrange(selected_year, selected_month)[1])).replace(day=1) - timedelta(days=1)
 
     days = [(start_date + timedelta(days=i)).strftime('%d/%m') for i in range((end_date - start_date).days + 1)]
 
-    st.header(f"Nhập chấm công cho {selected_employee_name} - tháng {calendar.month_name[selected_month]} năm {selected_year}")
-
     # Xác định các ngày chủ nhật
     sundays = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1) if (start_date + timedelta(days=i)).weekday() == 6]
     sundays_str = [d.strftime('%d/%m') for d in sundays]
+
+    # Lấy dữ liệu chấm công theo tháng
+    month_entries = get_month_entries(str(selected_year), f"{selected_month:02d}")
+
+    # Xử lý dữ liệu chấm công
+    if not month_entries.empty:
+        month_entries['date'] = pd.to_datetime(month_entries['date'])
+        pivot_table = month_entries.pivot(index='employee_name', columns='date', values='presence').fillna(0)
+        pivot_table.columns = [d.strftime('%d/%m') for d in pivot_table.columns]
+        st.write(pivot_table)
+
+        # Tổng số ngày công
+        work_days_count = len([d for d in pivot_table.columns if d not in sundays_str])
+        employee_summary = month_entries.groupby('employee_name')['presence'].sum().reset_index()
+        employee_summary['presence'] = employee_summary['presence'].apply(lambda x: f"{x:.2f}")
+        employee_summary['total_work_days'] = work_days_count
+
+        st.write("Tổng số ngày công:")
+        st.write(employee_summary)
+    else:
+        st.write("Chưa có dữ liệu chấm công cho tháng này.")
+        work_days_count = len([d for d in days if d not in sundays_str])
+        st.write("Tổng số ngày công:")
+        st.write(pd.DataFrame({'employee_name': [selected_employee_name], 'presence': [0.0], 'total_work_days': [work_days_count]}))
+
+    # Nhập chấm công
+    st.header(f"Nhập chấm công cho {selected_employee_name} - tháng {calendar.month_name[selected_month]} năm {selected_year}")
 
     # Tạo dữ liệu chấm công
     data = {}
@@ -212,25 +240,3 @@ def display_time_tracking():
             presence = data[day]
             upsert_attendance(selected_employee_id, date, presence)
         st.success("Dữ liệu đã được lưu thành công!")
-
-    # Hiển thị bảng chấm công của tháng được chọn
-    st.header(f"Bảng chấm công tháng {calendar.month_name[selected_month]} năm {selected_year}")
-
-    # Lấy dữ liệu chấm công theo tháng
-    month_entries = get_month_entries(str(selected_year), f"{selected_month:02d}")
-
-    # Xử lý dữ liệu chấm công
-    if not month_entries.empty:
-        month_entries['date'] = pd.to_datetime(month_entries['date'])
-        pivot_table = month_entries.pivot(index='employee_name', columns='date', values='presence').fillna(0)
-        pivot_table.columns = [d.strftime('%d/%m') for d in pivot_table.columns]
-        st.write(pivot_table)
-
-        # Tổng số ngày công
-        work_days_count = len([d for d in days if d not in sundays_str])
-        employee_summary = month_entries.groupby('employee_name')['presence'].sum().reset_index()
-        employee_summary['presence'] = employee_summary['presence'].apply(lambda x: f"{x:.2f}")
-        employee_summary['total_work_days'] = work_days_count
-
-        st.write("Tổng số ngày công:")
-        st.write(employee_summary)

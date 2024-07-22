@@ -27,11 +27,11 @@ def create_and_init_db():
         CREATE TABLE IF NOT EXISTS prices (
             price_id INTEGER PRIMARY KEY,
             customer_id INTEGER,
-            product_id INTEGER,
+            product_name TEXT,
             price REAL,
             last_updated TIMESTAMP,
             FOREIGN KEY (customer_id) REFERENCES customers (customer_id),
-            FOREIGN KEY (product_id) REFERENCES products (product_id)
+            UNIQUE (customer_id, product_name)
         )
     ''')
 
@@ -72,12 +72,10 @@ def get_products():
 
 def get_prices():
     conn = create_db_connection()
-    # Load necessary data from both databases
     prices_df = pd.read_sql_query('''
-        SELECT p.product_name, c.customer_name, pr.price, pr.last_updated
+        SELECT pr.product_name, c.customer_name, pr.price, pr.last_updated
         FROM prices pr
         JOIN customers c ON pr.customer_id = c.customer_id
-        JOIN products p ON pr.product_id = p.product_id
     ''', conn)
     conn.close()
     return prices_df
@@ -86,27 +84,25 @@ def insert_or_update_price(customer_name, product_name, price):
     conn = create_db_connection()
     cursor = conn.cursor()
 
-    # Check if customer and product exist
+    # Check if customer exists
     customer_id = cursor.execute('SELECT customer_id FROM customers WHERE customer_name = ?', (customer_name,)).fetchone()
-    product_id = cursor.execute('SELECT product_id FROM products WHERE product_name = ?', (product_name,)).fetchone()
 
-    if customer_id and product_id:
+    if customer_id:
         customer_id = customer_id[0]
-        product_id = product_id[0]
 
         # Insert or update price
         cursor.execute('''
-            INSERT INTO prices (customer_id, product_id, price, last_updated)
+            INSERT INTO prices (customer_id, product_name, price, last_updated)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT(customer_id, product_id) DO UPDATE SET
+            ON CONFLICT(customer_id, product_name) DO UPDATE SET
             price = excluded.price,
             last_updated = excluded.last_updated
-        ''', (customer_id, product_id, price, datetime.now()))
+        ''', (customer_id, product_name, price, datetime.now()))
 
         conn.commit()
-        print(f"Price updated successfully for customer '{customer_name}' and product '{product_name}'.")
+        st.success(f"Price updated successfully for customer '{customer_name}' and product '{product_name}'.")
     else:
-        print(f"Customer or product not found. Customer ID: {customer_id}, Product ID: {product_id}")
+        st.error(f"Customer not found. Customer ID: {customer_id}")
     
     conn.close()
 
@@ -195,3 +191,4 @@ def run_pricing_app(xe_may_df, oto_df):
         st.write("No prices available for the selected filters.")
     else:
         st.write(prices_df)
+
